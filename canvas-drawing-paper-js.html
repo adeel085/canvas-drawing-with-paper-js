@@ -87,7 +87,6 @@
     });
 
     document.getElementById('eraseAllDrawingBtn').addEventListener('click', function() {
-
       eraseAllDrawing();
     });
 
@@ -229,10 +228,115 @@
       lines = [];
     }
 
+    var isMouseDown = false;
+
+    function onMouseDown(event) {
+      isMouseDown = true;
+
+      // Handle draw or move based on mode
+      var canvasRect = paper.view.element.getBoundingClientRect();
+      var canvasX = (event.clientX - canvasRect.left) / paper.view.zoom + paper.view.bounds.left;
+      var canvasY = (event.clientY - canvasRect.top) / paper.view.zoom + paper.view.bounds.top;
+
+      if (drawMode) {
+        lastTouchX = canvasX;
+        lastTouchY = canvasY;
+      }
+    }
+
+    function onMouseMove(event) {
+
+      if (!isMouseDown) {
+        return;
+      }
+
+      var canvasRect = paper.view.element.getBoundingClientRect();
+      var canvasX = (event.clientX - canvasRect.left) / paper.view.zoom + paper.view.bounds.left;
+      var canvasY = (event.clientY - canvasRect.top) / paper.view.zoom + paper.view.bounds.top;
+      
+      if (drawMode) {
+          // Draw mode: Draw on the canvas
+          if (lastTouchX !== undefined && lastTouchY !== undefined) {
+              var path = new paper.Path();
+              path.strokeColor = 'black';
+              path.strokeWidth = 3;
+              path.moveTo(lastTouchX, lastTouchY);
+              path.lineTo(canvasX, canvasY);
+              path.smooth();
+
+              lastLinePaths.push(path);
+          }
+          lastTouchX = canvasX;
+          lastTouchY = canvasY;
+      }
+      else {
+        // Move mode: Move the view
+        if (lastTouchX === undefined || lastTouchY === undefined) {
+          lastTouchX = event.clientX;
+          lastTouchY = event.clientY;
+          return;
+        }
+
+        var deltaX = (event.clientX - lastTouchX) / paper.view.zoom;
+        var deltaY = (event.clientY - lastTouchY) / paper.view.zoom;
+
+        lastTouchX = event.clientX;
+        lastTouchY = event.clientY;
+        
+        // Update the view's center position based on the mouse movement
+        paper.view.center = paper.view.center.add(new paper.Point(-deltaX, -deltaY));
+      }
+    }
+
+    function onMouseUp(event) {
+      isMouseDown = false;
+
+      // Reset lastTouchX and lastTouchY to undefined
+      lastTouchX = undefined;
+      lastTouchY = undefined;
+
+      if (lastLinePaths.length) {
+        if (drawMode) {
+          lines.push(lastLinePaths);
+          lastLinePaths = [];
+        }
+      }
+    }
+
+    function onMouseWheel(event) {
+
+      event.preventDefault();
+
+      let delta = event.deltaY;
+      let zoomFactor = 1.02; // Adjust this value for desired zoom sensitivity
+
+      let newZoom;
+
+      if (delta < 0) {
+        newZoom = paper.view.zoom * zoomFactor;
+      }
+      else {
+        newZoom = paper.view.zoom / zoomFactor;
+      }
+
+      if (newZoom >= initialZoom) {
+        paper.view.zoom = newZoom;
+      }
+      else {
+        paper.view.zoom = initialZoom;
+      }
+    }
+
     // Attach touch event listeners
     paper.view.element.addEventListener('touchstart', onTouchStart);
     paper.view.element.addEventListener('touchend', onTouchEnd);
     paper.view.element.addEventListener('touchmove', onTouchMove);
+
+    // Attach mouse event listeners
+    paper.view.element.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mouseup', onMouseUp);
+    paper.view.element.addEventListener('mousemove', onMouseMove);
+    paper.view.element.addEventListener('wheel', onMouseWheel);
 
     function resizeImage(raster) {
 
