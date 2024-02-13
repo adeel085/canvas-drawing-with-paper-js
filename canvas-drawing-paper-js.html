@@ -321,6 +321,29 @@
 
       if (newZoom >= initialZoom) {
         paper.view.zoom = newZoom;
+
+        // Adjust the center position after zooming
+        var viewBounds = paper.view.bounds;
+        var contentBounds = paper.project.activeLayer.bounds; // Use activeLayer bounds
+        if (contentBounds.width !== 0 && contentBounds.height !== 0) {
+            var zoomCenter = viewBounds.center;
+            var contentCenter = contentBounds.center;
+            
+            // Calculate the expected new center position based on the zoom factor
+            var expectedCenter = contentCenter.subtract(zoomCenter.subtract(paper.view.center).multiply(1 / zoomFactor));
+            
+            // Smoothly move the center towards the expected position over a short duration
+            paper.view.onFrame = function(event) {
+                var delta = expectedCenter.subtract(paper.view.center).multiply(0.1);
+                if (delta.length < 1) {
+                    paper.view.center = expectedCenter;
+                    paper.view.onFrame = null;
+                }
+                else {
+                    paper.view.center = paper.view.center.add(delta);
+                }
+            };
+        }
       }
       else {
         paper.view.zoom = initialZoom;
