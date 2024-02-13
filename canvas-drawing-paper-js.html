@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canvas with Touch Zoom and Pan using Paper.js</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.15/paper-core.min.js"></script>
+  <style>
+    #canvas-container {
+      width: 100%;
+      height: 80vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      border: 1px solid #222;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h3>Paper.JS</h3>
+  <div>
+    <button id="toggleModeBtn">Toggle Mode</button>
+    <button id="centerImageBtn">Center Image</button>
+    <button id="undoLastStrokeBtn">Undo last stroke</button>
+    <button id="eraseAllDrawingBtn">Erase All Drawig</button>
+  </div>
+  <div id="canvas-container">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    // Set up Paper.js canvas
+    paper.setup(document.getElementById('canvas'));
+
+    // Add picture to canvas background
+    var raster = new paper.Raster({
+      source: 'facial.jpg',
+      onLoad: function() {
+        onResize(); // Initialize canvas size
+      }
+    });
+
+    // Center the image
+    raster.position = paper.view.center;
+
+    // Define initial touch variables
+    var initialDistance;
+    var initialZoom = paper.view.zoom;
+    var currentScaleWidth = 1, currentScaleHeight = 1;
+
+    var lines = [];
+    var lastLinePaths = [];
+
+    // Define variables to store previous touch positions
+    var lastTouchX, lastTouchY;
+    var drawMode = false;
+
+    // Event listener for the toggle mode button
+    document.getElementById('toggleModeBtn').addEventListener('click', function() {
+        drawMode = !drawMode;
+    });
+
+    document.getElementById('centerImageBtn').addEventListener('click', function() {
+      // Get the bounds of the raster image
+      var rasterBounds = raster.bounds;
+      
+      // Calculate the center of the image
+      var imageCenter = rasterBounds.center;
+      
+      // Set the view's center position to the center of the image
+      paper.view.center = imageCenter;
+    });
+
+    document.getElementById('undoLastStrokeBtn').addEventListener('click', function() {
+
+      if (lines.length == 0) {
+        return;
+      }
+
+      lines.pop().forEach((path) => {
+        path.remove();
+      });
+    });
+
+    document.getElementById('eraseAllDrawingBtn').addEventListener('click', function() {
+
+      eraseAllDrawing();
+    });
+
+    // Handle touch start event
+    function onTouchStart(event) {
+      if (event.touches.length === 2) {
+        initialDistance = calculateDistance(event.touches);
+      }
+
+      if (event.touches.length === 1) {
+        // Single touch: Handle draw or move based on mode
+        var touch = event.touches[0];
+        var canvasRect = paper.view.element.getBoundingClientRect();
+        var canvasX = (touch.clientX - canvasRect.left) / paper.view.zoom + paper.view.bounds.left;
+        var canvasY = (touch.clientY - canvasRect.top) / paper.view.zoom + paper.view.bounds.top;
+
+        if (drawMode) {
+          lastTouchX = canvasX;
+          lastTouchY = canvasY;
+        }
+      }
+    }
+
+    // Handle touch move event
+    function onTouchMove(event) {
+      event.preventDefault();
+
+      if (event.touches.length === 1) {
+        
+        // Single touch: Handle draw or move based on mode
+        var touch = event.touches[0];
+        var canvasRect = paper.view.element.getBoundingClientRect();
+        var canvasX = (touch.clientX - canvasRect.left) / paper.view.zoom + paper.view.bounds.left;
+        var canvasY = (touch.clientY - canvasRect.top) / paper.view.zoom + paper.view.bounds.top;
+        
+        if (drawMode) {
+            // Draw mode: Draw on the canvas
+            if (lastTouchX !== undefined && lastTouchY !== undefined) {
+                var path = new paper.Path();
+                path.strokeColor = 'black';
+                path.strokeWidth = 3;
+                path.moveTo(lastTouchX, lastTouchY);
+                path.lineTo(canvasX, canvasY);
+                path.smooth();
+
+                lastLinePaths.push(path);
+            }
+            lastTouchX = canvasX;
+            lastTouchY = canvasY;
+        }
+        else {
+          // Move mode: Move the view
+          if (lastTouchX === undefined || lastTouchY === undefined) {
+            lastTouchX = touch.clientX;
+            lastTouchY = touch.clientY;
+            return;
+          }
+
+          var deltaX = (touch.clientX - lastTouchX) / paper.view.zoom;
+          var deltaY = (touch.clientY - lastTouchY) / paper.view.zoom;
+
+          lastTouchX = touch.clientX;
+          lastTouchY = touch.clientY;
+          
+          // Update the view's center position based on the touch movement
+          paper.view.center = paper.view.center.add(new paper.Point(-deltaX, -deltaY));
+        }
+      }
+      else if (event.touches.length === 2) {
+        
+        var currentDistance = calculateDistance(event.touches);
+        var zoomFactor = currentDistance / initialDistance;
+        var newZoom = paper.view.zoom * zoomFactor;
+
+        if (newZoom >= initialZoom) {
+          paper.view.zoom = newZoom;
+      
+          // Adjust the center position after zooming
+          var viewBounds = paper.view.bounds;
+          var contentBounds = paper.project.activeLayer.bounds; // Use activeLayer bounds
+          if (contentBounds.width !== 0 && contentBounds.height !== 0) {
+            var zoomCenter = viewBounds.center;
+            var contentCenter = contentBounds.center;
+            
+            // Calculate the expected new center position based on the zoom factor
+            var expectedCenter = contentCenter.subtract(zoomCenter.subtract(paper.view.center).multiply(1 / zoomFactor));
+            
+            // Smoothly move the center towards the expected position over a short duration
+            paper.view.onFrame = function(event) {
+              var delta = expectedCenter.subtract(paper.view.center).multiply(0.1);
+              if (delta.length < 1) {
+                paper.view.center = expectedCenter;
+                paper.view.onFrame = null;
+              } else {
+                paper.view.center = paper.view.center.add(delta);
+              }
+            };
+          }
+        }
+        else {
+          paper.view.zoom = initialZoom;
+        }
+        initialDistance = currentDistance;
+      }
+    }
+
+    // Handle touch end event
+    function onTouchEnd(event) {
+      // Reset lastTouchX and lastTouchY to undefined
+      lastTouchX = undefined;
+      lastTouchY = undefined;
+
+      if (lastLinePaths.length) {
+        if (drawMode) {
+          lines.push(lastLinePaths);
+          lastLinePaths = [];
+        }
+      }
+    }
+
+    // Calculate distance between two touch points
+    function calculateDistance(touches) {
+      var touch1 = touches[0];
+      var touch2 = touches[1];
+      return Math.sqrt(Math.pow(touch2.clientX - touch1.clientX, 2) + Math.pow(touch2.clientY - touch1.clientY, 2));
+    }
+
+    function eraseAllDrawing() {
+      // Iterate over the lines array
+      lines.forEach(function(line) {
+          lines.forEach(function(line) {
+            line.forEach(path => {
+              path.remove();
+            });
+        });
+      });
+
+      // Clear the lines array
+      lines = [];
+    }
+
+    // Attach touch event listeners
+    paper.view.element.addEventListener('touchstart', onTouchStart);
+    paper.view.element.addEventListener('touchend', onTouchEnd);
+    paper.view.element.addEventListener('touchmove', onTouchMove);
+
+    function resizeImage(raster) {
+
+      eraseAllDrawing();
+
+      // Get the dimensions of the canvas container
+      var containerWidth = document.getElementById('canvas-container').offsetWidth;
+      var containerHeight = document.getElementById('canvas-container').offsetHeight;
+
+      var imageNewWidth = 0;
+      var imageNewHeight = 0;
+
+      if (raster.width > containerWidth) {
+
+        var imageAspectRatio;
+
+        if (raster.width > raster.height) {
+          imageAspectRatio = raster.height / raster.width;
+        }
+        else {
+          imageAspectRatio = raster.width / raster.height;
+        }
+
+        imageNewWidth = containerWidth;
+        imageNewHeight = (containerWidth * imageAspectRatio);
+      }
+      else if (raster.height > containerHeight) {
+
+        var imageAspectRatio;
+
+        if (raster.width > raster.height) {
+          imageAspectRatio = raster.width / raster.height;
+        }
+        else {
+          imageAspectRatio = raster.height / raster.width;
+        }
+
+        imageNewHeight = containerHeight;
+        imageNewWidth = (containerHeight * imageAspectRatio);
+      }
+
+      let factorWidth = imageNewWidth / raster.width;
+      let factorHeight = imageNewHeight / raster.height;
+
+      raster.scale(factorWidth / currentScaleWidth, factorHeight / currentScaleHeight);
+
+      currentScaleWidth = factorWidth;
+      currentScaleHeight = factorHeight;
+
+      raster.position = paper.view.center;
+    }
+
+    // Adjust canvas size on window resize
+    function onResize() {
+      paper.view.viewSize = new paper.Size(window.innerWidth, window.innerHeight);
+      raster.position = paper.view.center;
+      resizeImage(raster);
+    }
+
+    window.addEventListener('resize', onResize);
+  </script>
+</body>
+</html>
