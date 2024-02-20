@@ -400,6 +400,19 @@
         imageNewHeight = containerHeight;
         imageNewWidth = (containerHeight * imageAspectRatio);
       }
+      else { // Not sure about this right now. But this one fixes the bug if the container is larger than the image actual size
+        var imageAspectRatio;
+
+        if (raster.width > raster.height) {
+          imageAspectRatio = raster.width / raster.height;
+        }
+        else {
+          imageAspectRatio = raster.height / raster.width;
+        }
+
+        imageNewHeight = containerHeight;
+        imageNewWidth = (containerHeight * imageAspectRatio);
+      }
 
       let factorWidth = imageNewWidth / raster.width;
       let factorHeight = imageNewHeight / raster.height;
